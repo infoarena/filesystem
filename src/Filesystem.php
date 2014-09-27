@@ -40,6 +40,94 @@ final class Filesystem
     }
 
     /**
+     * Atomically write to file
+     *
+     * @param  string $path  the file to be written to
+     * @param  string $data  the data to be written
+     *
+     * @throws IOException   when the file is not writable or
+     *                       when there are problems with the temporary file
+     *
+     * @return int           the total number of bytes written
+     */
+    public static function writeFile($path, $data)
+    {
+        $path = self::resolvePath($path);
+        self::assertWritableFile($path);
+
+        $dir = dirname($path);
+
+        if (($tmpFile = tempnam($dir, basename($path))) === false) {
+            throw new IOException(
+                "Could not create temporary file for atomic write on '{$path}'",
+                $path
+            );
+        }
+
+        if (($total = @file_put_contents($tmpFile, $data)) === false) {
+            throw new IOException(
+                "Could not write to temporary file for atomic write on '{$path}'",
+                $path
+            );
+        }
+
+        self::rename($tmpFile, $path);
+        return $total;
+    }
+
+    /**
+     * Rename a file or directory
+     *
+     * @param  string $source       The source file or directory to be renamed
+     * @param  string $destination  The new name for the file
+     *
+     * @throws IOException          when the source file does not exist or
+     *                              when the rename can not be made
+     *
+     * @return void
+     */
+    public static function rename($source, $destination)
+    {
+        $source = self::resolvePath($source);
+        $destination = self::resolvePath($destination);
+
+        self::assertExists($source);
+
+        if (@rename($source, $destination) === false) {
+            throw new IOException(
+                "Could not rename file '{$source}' to '{$destination}'",
+                $source
+            );
+        }
+    }
+
+    /**
+     * Change the permissions of a file or directory
+     *
+     * @param  string $path   Path to file or directory
+     * @param  int    $umask  Permission umask. Note that umask is in octal, so you
+     *                        should specify it as, e.g., '0777', not '777'.
+     *
+     * @throws IOException    when the path does not point to a file or directory or
+     *                        when the chmod fails
+     *
+     * @return void
+     */
+    public static function chmod($path, $umask)
+    {
+        $path = self::resolvePath($path);
+
+        self::assertExists($path);
+        if (!@chmod($path, $umask)) {
+            $readable_mask = sprintf('%04o', $umask);
+            throw new IOException(
+                "Failed to chmod '{$path}' to '{$readable_mask}'",
+                $path
+            );
+        }
+    }
+
+    /**
      * Canonicalize a path, resolving it relative to a directory (default PWD)
      *
      * @param  string $path         File path to be resolved.
@@ -49,7 +137,9 @@ final class Filesystem
      */
     public static function resolvePath($path, $relative_to = null)
     {
-        $is_absolute = !strncmp($path, DIRECTORY_SEPARATOR, 1);
+        $is_absolute = !strncmp($path, DIRECTORY_SEPARATOR, 1) ||
+            preg_match("/^[a-zA-Z][a-zA-Z0-9\-.+]*:\/\//", $path) == 1;
+
         if (!$is_absolute) {
             if ($relative_to === null) {
                 $relative_to = getcwd();
@@ -110,6 +200,34 @@ final class Filesystem
         }
     }
 
+    /**
+     * Asserts that the given filepath points to a directory
+     *
+     * @param  string $path  File path to check
+     *
+     * @throws IOException   In case filepath doesn't point to a directory
+     *
+     * @return void
+     */
+    public static function assertIsDirectory($path)
+    {
+        if (!is_dir($path)) {
+            throw new IOException(
+                "Request path '{$path}' is not a directory.",
+                $path
+            );
+        }
+    }
+
+    /**
+     * Asserts the given filepath points to a readable location
+     *
+     * @param  string $path  File path to check
+     *
+     * @throws IOException   In case filepath doesn't point to a readable location
+     *
+     * @return void
+     */
     public static function assertReadable($path)
     {
         if (!is_readable($path)) {
@@ -119,6 +237,50 @@ final class Filesystem
             );
         }
     }
+
+    /**
+     * Asserts the given filepath points to a writable location for a file
+     *
+     * @param  string $path  File path to check
+     *
+     * @throws IOException   In case filepath doesn't point to a writable location for a file
+     *
+     * @return void
+     */
+    public static function assertWritableFile($path)
+    {
+        $path = self::resolvePath($path);
+        $dir = dirname($path);
+
+        self::assertExists($dir);
+        self::assertIsDirectory($dir);
+
+        if (self::pathExists($path)) {
+            self::assertWritable($path);
+        } else {
+            self::assertWritable($dir);
+        }
+    }
+
+    /**
+     * Asserts the given filepath points to a writable location
+     *
+     * @param  string $path File path to check
+     *
+     * @throws IOException  In case filepath doesn't point to a writable location
+     *
+     * @return void
+     */
+    public static function assertWritable($path)
+    {
+        if (!is_writable($path)) {
+            throw new IOException(
+                "Path '{$path}' is not writable",
+                $path
+            );
+        }
+    }
+
     /**
      * Check if a file exists
      * This differs from file_exists because it also checks for links

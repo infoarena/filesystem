@@ -2,52 +2,92 @@
 
 namespace Infoarena\Filesystem;
 
-function file_get_contents($path)
+use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamFile;
+
+function getcwd()
 {
-    global $mock_file_get_contents;
-    if (isset($mock_file_get_contents)) {
+    return vfsStream::url('root');
+}
+
+function realpath($path)
+{
+    if (substr($path, 0, 1) != '/' && preg_match("/^[a-zA-Z][a-zA-Z0-9\-.+]*:\/\/[^\/]*/", $path) != 1) {
+        $path = getcwd() . $path;
+    }
+
+
+    if (!file_exists($path)) {
         return false;
     }
 
+    return $path;
+}
+
+function file_get_contents($path)
+{
+    if ($path == vfsStream::url('root/errorFile')) {
+        return false;
+    }
     return \file_get_contents($path);
+}
+
+function file_put_contents($path, $contents)
+{
+    $pattern = vfsStream::url('root/errorFile');
+    if (!strncmp($path, $pattern, strlen($pattern))) {
+        return false;
+    }
+
+    return \file_put_contents($path, $contents);
+}
+
+function tempnam($directory, $prefix)
+{
+    $file_name = realpath($directory) . '/' . $prefix . uniqid();
+    if (@\file_put_contents($file_name, '') === false) {
+        return false;
+    }
+
+    return $file_name;
+}
+
+function chmod($file, $umask)
+{
+    if ($file == vfsStream::url('root/errorFile')) {
+        return false;
+    }
+    return \chmod($file, $umask);
 }
 
 final class FilesystemTest extends \PHPUnit_Framework_TestCase
 {
+    private $vfs;
+
     public function testResolveAbsolutePaths()
     {
-        $this->assertEquals('/', Filesystem::resolvePath('/'));
-        $this->assertEquals('/x/y', Filesystem::resolvePath('/x/y'));
-        $this->assertEquals('/x/y/', Filesystem::resolvePath('/x/y/'));
+        $this->assertEquals(vfsStream::url('root'), Filesystem::resolvePath(vfsStream::url('root')));
+        $this->assertEquals(vfsStream::url('x/y'), Filesystem::resolvePath(vfsStream::url('x/y')));
+        $this->assertEquals(vfsStream::url('x/y/'), Filesystem::resolvePath(vfsStream::url('x/y/')));
     }
 
     public function testResolveRelativePaths()
     {
-        $this->assertEquals('/x', Filesystem::resolvePath('x', '/'));
-        $this->assertEquals('/father/child', Filesystem::resolvePath('child', '/father'));
+        $this->assertEquals(vfsStream::url("x/y"), Filesystem::resolvePath('y', vfsStream::url('x')));
+        $this->assertEquals(vfsStream::url("x/y"), Filesystem::resolvePath('y', vfsStream::url('x/')));
+        $this->assertEquals(vfsStream::url("root/x"), Filesystem::resolvePath('x'));
 
-        chdir(__DIR__);
-        $this->assertEquals(
-            realpath(__DIR__) . '/FilesystemTest.php',
-            Filesystem::resolvePath('FilesystemTest.php')
-        );
-
-        symlink(__DIR__, __DIR__ . '/symlink');
-        $this->assertEquals(
-            realpath(__DIR__) . '/FilesystemTest.php',
-            Filesystem::resolvePath('symlink/FilesystemTest.php')
-        );
     }
 
     public function testPathExists()
     {
-        $this->assertTrue(Filesystem::pathExists(__DIR__ . '/FilesystemTest.php'));
+        $this->assertTrue(Filesystem::pathExists(Filesystem::resolvePath("existingFile")));
     }
 
-    public function testAssertExistsFailed()
+    public function testAssertExists()
     {
-        Filesystem::assertExists(__DIR__ . '/FilesystemTest.php');
-        $path = __DIR__ . '/missing_file';
+        Filesystem::assertExists(Filesystem::resolvePath("existingFile"));
+        $path = Filesystem::resolvePath("nonExistingFile");
         $this->setExpectedException(
             'Infoarena\\Filesystem\\FileNotFoundException',
             "Filesystem entity '{$path}' does not exist"
@@ -57,8 +97,8 @@ final class FilesystemTest extends \PHPUnit_Framework_TestCase
 
     public function testAssertIsFile()
     {
-        Filesystem::assertIsFile(__DIR__ . '/FilesystemTest.php');
-        $path = __DIR__;
+        Filesystem::assertIsFile(Filesystem::resolvePath("existingFile"));
+        $path = Filesystem::resolvePath("");
         $this->setExpectedException(
             'Infoarena\\Filesystem\\IOException',
             "Requested path '{$path}' is not a file."
@@ -66,16 +106,54 @@ final class FilesystemTest extends \PHPUnit_Framework_TestCase
         Filesystem::assertIsFile($path);
     }
 
-    public function testAssertReadable()
+    public function testAssertIsDirectory()
     {
-        Filesystem::assertReadable(__DIR__ . '/FilesystemTest.php');
+        Filesystem::assertIsDirectory(Filesystem::resolvePath(""));
 
+        $path = Filesystem::resolvePath("existingFile");
         $this->setExpectedException(
             'Infoarena\\Filesystem\\IOException',
-            "Path '/random/path' is not readable."
+            "Request path '{$path}' is not a directory."
         );
 
-        Filesystem::assertReadable('/random/path');
+        Filesystem::assertIsDirectory($path);
+    }
+
+    public function testAssertReadable()
+    {
+        Filesystem::assertReadable(Filesystem::resolvePath("existingFile"));
+
+        $path = Filesystem::resolvePath("nonExistingFile");
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException',
+            "Path '{$path}' is not readable."
+        );
+
+        Filesystem::assertReadable($path);
+    }
+
+    public function testAssertWritable()
+    {
+        Filesystem::assertWritable(Filesystem::resolvePath("existingFile"));
+
+        $path = Filesystem::resolvePath("nonWritableFile");
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException',
+            "Path '{$path}' is not writable"
+        );
+        Filesystem::assertWritable($path);
+    }
+
+    public function testAssertWritableFile()
+    {
+        Filesystem::assertWritableFile(Filesystem::resolvePath("existingFile"));
+        Filesystem::assertWritableFile(Filesystem::resolvePath("subfolder"));
+        Filesystem::assertWritableFile(Filesystem::resolvePath("nonExistingFile"));
+        $path = Filesystem::resolvePath("nonWritableFile");
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException'
+        );
+        Filesystem::assertWritableFile($path);
     }
 
     public function testReadFile()
@@ -83,31 +161,95 @@ final class FilesystemTest extends \PHPUnit_Framework_TestCase
         chdir(__DIR__);
         $this->assertEquals(
             '',
-            Filesystem::readFile('fixtures/empty_file.txt')
+            Filesystem::readFile('emptyFile')
         );
 
         $this->assertEquals(
             "Non empty\n",
-            Filesystem::readFile('fixtures/non_empty_file.txt')
+            Filesystem::readFile('nonEmptyFile')
         );
-
-        global $mock_file_get_contents;
-        $mock_file_get_contents = true;
-        $resolvedPath = Filesystem::resolvePath(__DIR__ . '/fixtures/empty_file.txt');
-        $this->setExpectedException(
-            'Infoarena\\Filesystem\\IOException',
-            "Failed to read file '{$resolvedPath}'"
-        );
-        Filesystem::readFile('fixtures/empty_file.txt');
     }
 
-    public function tearDown()
+    public function testReadErrorFile()
     {
-        if (file_exists(__DIR__ . '/symlink')) {
-            unlink(__DIR__ . '/symlink');
-        }
+        $path = Filesystem::resolvePath('errorFile');
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException',
+            "Failed to read file '{$path}'"
+        );
+        Filesystem::readFile('errorFile');
+    }
 
-        global $mock_file_get_contents;
-        unset($mock_file_get_contents);
+    public function testWriteFile()
+    {
+        $this->assertEquals(
+            5,
+            Filesystem::writeFile(Filesystem::resolvePath("file"), 'AAAAA')
+        );
+
+        $path = Filesystem::resolvePath('nonWritableFolder/writableFile');
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException',
+            "Could not create temporary file for atomic write on '{$path}'"
+        );
+        Filesystem::writeFile('nonWritableFolder/writableFile', '');
+    }
+
+    public function testWriteErrorFile()
+    {
+        $path = Filesystem::resolvePath('errorFile');
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException',
+            "Could not write to temporary file for atomic write on '{$path}'"
+        );
+        Filesystem::writeFile('errorFile', '');
+    }
+
+    public function testRename()
+    {
+        Filesystem::rename('emptyFile', 'nonEmptyFile');
+        Filesystem::rename('nonEmptyFile', 'newFile');
+
+        $source = Filesystem::resolvePath('newFile');
+        $destination = Filesystem::resolvePath('');
+
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException',
+            "Could not rename file '{$source}' to '{$destination}'"
+        );
+        Filesystem::rename('newFile', '');
+    }
+
+    public function testChmod()
+    {
+        Filesystem::chmod('emptyFile', 0567);
+        $this->assertEquals(0567, fileperms(Filesystem::resolvePath('emptyFile')) & 0777);
+
+        $path = Filesystem::resolvePath('errorFile');
+        $this->setExpectedException(
+            'Infoarena\\Filesystem\\IOException',
+            "Failed to chmod '{$path}' to '0111'"
+        );
+        Filesystem::chmod('errorFile', 0111);
+    }
+
+    public function setUp()
+    {
+        $this->vfs = vfsStream::setUp('root');
+        vfsStream::create(array(
+            'existingFile' => '',
+            'nonWritableFile' => '',
+            'emptyFile' => '',
+            'nonEmptyFile' => "Non empty\n",
+            'subfolder' => array(),
+            'errorFile' => 'file',
+            'nonWritableFolder' => array(
+                'writableFile' => ''
+            )
+        ), $this->vfs);
+
+        chmod(vfsStream::url('root/nonWritableFile'), 0555);
+        chmod(vfsStream::url('root/nonWritableFolder'), 0444);
+        chmod(vfsStream::url('root/nonWritableFolder/writableFile'), 0777);
     }
 }

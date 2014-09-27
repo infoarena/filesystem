@@ -1,18 +1,21 @@
 {
-  "name": "infoarena/filesystem",
-  "type": "library",
-  "homepage": "https://github.com/infoarena/filesystem",
-  "license": "MIT",
-  "authors": [
-    {
-      "name": "Adrian Budau",
-      "email": "adrian.budau@infoarena.ro",
-      "role": "Developer"
+    "name": "infoarena/filesystem",
+    "type": "library",
+    "homepage": "https://github.com/infoarena/filesystem",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Adrian Budau",
+            "email": "adrian.budau@infoarena.ro",
+            "role": "Developer"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Infoarena\\Filesystem\\": ["src/", "tests/"]
+        }
+    },
+    "require-dev": {
+        "mikey179/vfsStream" : "~1.4"
     }
-  ],
-  "autoload": {
-    "psr-4": {
-      "Infoarena\\Filesystem\\": ["src/", "tests/"]
-    }
-  }
 }
