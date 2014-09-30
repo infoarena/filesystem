@@ -16,20 +16,20 @@ final class Filesystem
      *
      * @param  string $path  File path of the file to be read.
      *
-     * @throws IOException   When getting the contents failed or
-     *                       When the file does not exist or
-     *                       When the file is not readable
+     * @throws IOException   When getting the contents failed
+     * @throws IOException   When the file does not exist
+     * @throws IOException   When the file is not readable
      *
      * @return string        The file contents
      *
      */
-    public static function readFile($path)
+    public function readFile($path)
     {
-        $path = self::resolvePath($path);
+        $path = $this->resolvePath($path);
 
-        self::assertExists($path);
-        self::assertIsFile($path);
-        self::assertReadable($path);
+        $this->assertExists($path);
+        $this->assertIsFile($path);
+        $this->assertReadable($path);
 
         $data = @file_get_contents($path);
         if ($data === false) {
@@ -45,15 +45,15 @@ final class Filesystem
      * @param  string $path  the file to be written to
      * @param  string $data  the data to be written
      *
-     * @throws IOException   when the file is not writable or
-     *                       when there are problems with the temporary file
+     * @throws IOException   when the file is not writable
+     * @throws IOException   when there are problems with the temporary file
      *
      * @return int           the total number of bytes written
      */
-    public static function writeFile($path, $data)
+    public function writeFile($path, $data)
     {
-        $path = self::resolvePath($path);
-        self::assertWritableFile($path);
+        $path = $this->resolvePath($path);
+        $this->assertWritableFile($path);
 
         $dir = dirname($path);
 
@@ -71,7 +71,7 @@ final class Filesystem
             );
         }
 
-        self::rename($tmpFile, $path);
+        $this->rename($tmpFile, $path);
         return $total;
     }
 
@@ -81,17 +81,17 @@ final class Filesystem
      * @param  string $source       The source file or directory to be renamed
      * @param  string $destination  The new name for the file
      *
-     * @throws IOException          when the source file does not exist or
-     *                              when the rename can not be made
+     * @throws IOException          when the source file does not exist
+     * @throws IOException          when the rename can not be made
      *
      * @return void
      */
-    public static function rename($source, $destination)
+    public function rename($source, $destination)
     {
-        $source = self::resolvePath($source);
-        $destination = self::resolvePath($destination);
+        $source = $this->resolvePath($source);
+        $destination = $this->resolvePath($destination);
 
-        self::assertExists($source);
+        $this->assertExists($source);
 
         if (@rename($source, $destination) === false) {
             throw new IOException(
@@ -108,16 +108,16 @@ final class Filesystem
      * @param  int    $umask  Permission umask. Note that umask is in octal, so you
      *                        should specify it as, e.g., '0777', not '777'.
      *
-     * @throws IOException    when the path does not point to a file or directory or
-     *                        when the chmod fails
+     * @throws IOException    when the path does not point to a file or directory
+     * @throws IOException    when the chmod fails
      *
      * @return void
      */
-    public static function chmod($path, $umask)
+    public function chmod($path, $umask)
     {
-        $path = self::resolvePath($path);
+        $path = $this->resolvePath($path);
 
-        self::assertExists($path);
+        $this->assertExists($path);
         if (!@chmod($path, $umask)) {
             $readable_mask = sprintf('%04o', $umask);
             throw new IOException(
@@ -135,7 +135,7 @@ final class Filesystem
      *
      * @return string               The resolved file path.
      */
-    public static function resolvePath($path, $relative_to = null)
+    public function resolvePath($path, $relative_to = null)
     {
         $is_absolute = !strncmp($path, DIRECTORY_SEPARATOR, 1) ||
             preg_match("/^[a-zA-Z][a-zA-Z0-9\-.+]*:\/\//", $path) == 1;
@@ -171,9 +171,9 @@ final class Filesystem
      *
      * @return void
      */
-    public static function assertExists($path)
+    public function assertExists($path)
     {
-        if (!self::pathExists($path)) {
+        if (!$this->pathExists($path)) {
             throw new FileNotFoundException(
                 "Filesystem entity '{$path}' does not exist",
                 $path
@@ -190,7 +190,7 @@ final class Filesystem
      *
      * @return void
      */
-    public static function assertIsFile($path)
+    public function assertIsFile($path)
     {
         if (!is_file($path)) {
             throw new IOException(
@@ -209,7 +209,7 @@ final class Filesystem
      *
      * @return void
      */
-    public static function assertIsDirectory($path)
+    public function assertIsDirectory($path)
     {
         if (!is_dir($path)) {
             throw new IOException(
@@ -228,7 +228,7 @@ final class Filesystem
      *
      * @return void
      */
-    public static function assertReadable($path)
+    public function assertReadable($path)
     {
         if (!is_readable($path)) {
             throw new IOException(
@@ -247,18 +247,18 @@ final class Filesystem
      *
      * @return void
      */
-    public static function assertWritableFile($path)
+    public function assertWritableFile($path)
     {
-        $path = self::resolvePath($path);
+        $path = $this->resolvePath($path);
         $dir = dirname($path);
 
-        self::assertExists($dir);
-        self::assertIsDirectory($dir);
+        $this->assertExists($dir);
+        $this->assertIsDirectory($dir);
 
-        if (self::pathExists($path)) {
-            self::assertWritable($path);
+        if ($this->pathExists($path)) {
+            $this->assertWritable($path);
         } else {
-            self::assertWritable($dir);
+            $this->assertWritable($dir);
         }
     }
 
@@ -271,7 +271,7 @@ final class Filesystem
      *
      * @return void
      */
-    public static function assertWritable($path)
+    public function assertWritable($path)
     {
         if (!is_writable($path)) {
             throw new IOException(
@@ -289,7 +289,7 @@ final class Filesystem
      *
      * @return bool          true if the filepath points to something, false otherwise
      */
-    public static function pathExists($path)
+    public function pathExists($path)
     {
         return file_exists($path) || is_link($path);
     }
