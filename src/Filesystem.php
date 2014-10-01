@@ -9,7 +9,7 @@ namespace Infoarena\Filesystem;
  *
  * @author Adrian Budau <budau.adi@gmail.com>
  */
-final class Filesystem
+final class Filesystem implements FilesystemInterface
 {
     /**
      * Read a file similar to file_get_contents but throws on failure
